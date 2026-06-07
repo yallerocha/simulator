@@ -10,7 +10,8 @@
 	path = monitor
 	url = https://github.com/yallerocha/monitor
 	branch = main
-[submodule "actuator"]
-	path = actuator
+[submodule "recommendations-manager"]
+	path = recommendations-manager
 	url = https://github.com/yallerocha/recommendations-manager
 	branch = main
+
