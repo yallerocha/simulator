@@ -93,12 +93,19 @@ done
 # -----------------------------------------------------------------------------
 start_port_forward() {
   local ctx=$1 ns=$2 svc=$3 local_port=$4 target_port=$5
-  (
+  local logfile="/tmp/pf_${ctx}_${local_port}.log"
+  # Mata qualquer port-forward anterior na mesma porta para evitar conflito
+  pkill -f "port-forward svc/$svc $local_port:" 2>/dev/null || true
+  sleep 1
+  nohup bash -c "
     while true; do
-      kubectl --context "$ctx" -n "$ns" port-forward "svc/$svc" "$local_port:$target_port" --address 127.0.0.1 >/dev/null 2>&1
+      KUBECONFIG=${KUBECONFIG} kubectl --context '${ctx}' -n '${ns}' \
+        port-forward 'svc/${svc}' '${local_port}:${target_port}' \
+        --address 127.0.0.1 >>'${logfile}' 2>&1
       sleep 2
     done
-  ) &
+  " >>"$logfile" 2>&1 &
+  disown $!
 }
 
 echo -e "${COLOR}🌐 Starting background port-forwards...${RESET}"

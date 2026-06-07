@@ -54,7 +54,7 @@ services:
     actuator:
         container_name: actuator
         build:
-            context: ./actuator
+            context: ./recommendations-manager
             dockerfile: Dockerfile.api
         restart: unless-stopped
         environment:

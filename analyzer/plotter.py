@@ -22,6 +22,9 @@ os.environ['LIBGL_DEBUG'] = 'quiet'
 
 def _calculate_x_breaks(max_time: float) -> list:
     """Calculate appropriate X-axis break points based on max time."""
+    import math
+    if max_time is None or (isinstance(max_time, float) and math.isnan(max_time)) or max_time <= 0:
+        return [0, 60, 120]
     x_breaks = list(range(0, int(max_time) + 120, 120))
     if len(x_breaks) > 20:
         x_breaks = list(range(0, int(max_time) + 300, 300))
@@ -38,6 +41,11 @@ def plot_cpu_load(df: pd.DataFrame, output_dir: str):
         df: DataFrame with columns: time_seconds, cpu_load_private, cpu_load_public
         output_dir: Directory to save the plot
     """
+    required = ['time_seconds', 'cpu_load_private', 'cpu_load_public']
+    if df.empty or not all(c in df.columns for c in required):
+        print('⚠️  Skipping CPU load plot: no data available.')
+        return
+
     plot_df = df.melt(
         id_vars=['time_seconds'], 
         value_vars=['cpu_load_private', 'cpu_load_public'],
@@ -76,6 +84,11 @@ def plot_memory_load(df: pd.DataFrame, output_dir: str):
         df: DataFrame with columns: time_seconds, mem_load_private, mem_load_public
         output_dir: Directory to save the plot
     """
+    required = ['time_seconds', 'mem_load_private', 'mem_load_public']
+    if df.empty or not all(c in df.columns for c in required):
+        print('⚠️  Skipping memory load plot: no data available.')
+        return
+
     plot_df = df.melt(
         id_vars=['time_seconds'], 
         value_vars=['mem_load_private', 'mem_load_public'],
@@ -114,6 +127,10 @@ def plot_total_percent_pending(df: pd.DataFrame, output_dir: str):
         df: DataFrame with columns: time_seconds, total_percent_pending
         output_dir: Directory to save the plot
     """
+    if df.empty or 'time_seconds' not in df.columns or 'total_percent_pending' not in df.columns:
+        print('⚠️  Skipping total percent pending plot: no data available.')
+        return
+
     max_time = df['time_seconds'].max() if not df.empty else 0
     x_breaks = _calculate_x_breaks(max_time)
 
@@ -164,6 +181,11 @@ def plot_resource(
     4. Bottom: Public Cluster - Pending Pods
     """
     df = df.copy()
+
+    # Guard: se não há dados, não plota
+    if df.empty or df['time_seconds'].isna().all() if 'time_seconds' in df.columns else df.empty:
+        print(f"⚠️  Skipping plot '{title}': no data available.")
+        return
 
     # Ensure time_seconds exists
     if 'time_seconds' not in df.columns and 'timestamp' in df.columns:
@@ -378,6 +400,12 @@ def plot_pricing(
         migration_data: Optional DataFrame with migration events
         instance_types: Dict with 'public' and 'private' instance type names
     """
+    # Guard: se não há dados de pricing, não plota
+    required_cols = ['time_seconds', 'cost_public', 'cost_private', 'cumulative_cost_public', 'cumulative_cost_private']
+    if df.empty or not all(c in df.columns for c in required_cols):
+        print("⚠️  Skipping pricing plot: no pricing data available.")
+        return
+
     # Calculate X-axis intervals
     max_time = df['time_seconds'].max() if not df.empty else 0
     x_breaks = _calculate_x_breaks(max_time)
