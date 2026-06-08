@@ -33,6 +33,14 @@ fi
 
 # Modify member1 and member2 configs based on execution mode
 cd karmada
+
+# Habilita ppc64le no Karmada: o upstream recusa arquiteturas fora de amd64/arm64
+# em hack/util.sh (util::install_environment_check). Patch idempotente.
+if ! grep -q '(amd64|arm64|ppc64le)' hack/util.sh 2>/dev/null; then
+  echo -e "${COLOR}🔧 Patching Karmada hack/util.sh to allow ppc64le...${RESET}"
+  sed -i 's/(amd64|arm64)/(amd64|arm64|ppc64le)/' hack/util.sh || true
+fi
+
 EXECUTION_MODE="${EXECUTION_MODE:-real}"  # Default to real if not set
 
 if [[ "$EXECUTION_MODE" != "kwok" ]]; then
@@ -72,8 +80,15 @@ else
   fi
   echo -e "${COLOR}✅ Config files cleaned (control-plane only for KWOK mode)${RESET}"
 fi
-sudo sysctl fs.inotify.max_user_watches=524288
-sudo sysctl fs.inotify.max_user_instances=512
+# Aumenta limites de inotify (kind/karmada usam muitos file watches).
+# Em container pode não haver 'sysctl' ou permissão; tenta via /proc e nunca falha.
+if command -v sysctl &> /dev/null; then
+  sudo sysctl fs.inotify.max_user_watches=524288 || true
+  sudo sysctl fs.inotify.max_user_instances=512 || true
+else
+  echo 524288 | sudo tee /proc/sys/fs/inotify/max_user_watches > /dev/null 2>&1 || true
+  echo 512    | sudo tee /proc/sys/fs/inotify/max_user_instances > /dev/null 2>&1 || true
+fi
 hack/local-up-karmada.sh
 cd ..
 

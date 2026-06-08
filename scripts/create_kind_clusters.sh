@@ -36,6 +36,17 @@ fi
 echo -e "${GREEN}✅ kind is installed: $(kind --version)${NC}"
 echo ""
 
+# Node image arch-aware (ppc64le não tem kindest/node oficial -> imagem da comunidade Power).
+# Normalmente herdada do main.sh; fallback aqui para execução standalone.
+if [ -z "${KIND_NODE_IMAGE:-}" ]; then
+    if [ "$(uname -m)" = "ppc64le" ]; then
+        KIND_NODE_IMAGE="quay.io/powercloud/kind-node:v1.31.14"
+    else
+        KIND_NODE_IMAGE="kindest/node:v1.31.2"
+    fi
+fi
+echo -e "${BLUE}🖼️  Using kind node image: ${KIND_NODE_IMAGE}${NC}"
+
 # Read node count from config.yaml
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/../simulator/data/config.yaml"
@@ -88,7 +99,7 @@ if [ "$MEMBER1_NEEDS_CREATE" = true ]; then
     KARMADA_CONFIG="$SCRIPT_DIR/../karmada/artifacts/kindClusterConfig/member1.yaml"
     if [ -f "$KARMADA_CONFIG" ]; then
         echo -e "${BLUE}  Using Karmada config (already includes workers)...${NC}"
-        kind create cluster --name member1 --config "$KARMADA_CONFIG"
+        kind create cluster --name member1 --image "$KIND_NODE_IMAGE" --config "$KARMADA_CONFIG"
     else
         # Generate KIND config with dynamic worker count
         cat > /tmp/member1-kind-config.yaml <<EOF
@@ -117,7 +128,7 @@ EOF
 EOF
         done
 
-        kind create cluster --name member1 --config /tmp/member1-kind-config.yaml
+        kind create cluster --name member1 --image "$KIND_NODE_IMAGE" --config /tmp/member1-kind-config.yaml
         rm /tmp/member1-kind-config.yaml
     fi
 
@@ -143,7 +154,7 @@ if [ "$MEMBER2_NEEDS_CREATE" = true ]; then
     KARMADA_CONFIG="$SCRIPT_DIR/../karmada/artifacts/kindClusterConfig/member2.yaml"
     if [ -f "$KARMADA_CONFIG" ]; then
         echo -e "${BLUE}  Using Karmada config (already includes workers)...${NC}"
-        kind create cluster --name member2 --config "$KARMADA_CONFIG"
+        kind create cluster --name member2 --image "$KIND_NODE_IMAGE" --config "$KARMADA_CONFIG"
     else
         # Generate KIND config with dynamic worker count
         cat > /tmp/member2-kind-config.yaml <<EOF
@@ -172,7 +183,7 @@ EOF
 EOF
         done
 
-        kind create cluster --name member2 --config /tmp/member2-kind-config.yaml
+        kind create cluster --name member2 --image "$KIND_NODE_IMAGE" --config /tmp/member2-kind-config.yaml
         rm /tmp/member2-kind-config.yaml
     fi
 

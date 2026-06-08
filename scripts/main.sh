@@ -19,6 +19,20 @@ trap 'echo -e "${COLOR}❌ Error in ${BASH_SOURCE[0]}:$LINENO – $BASH_COMMAND$
 export PATH=$PATH:/usr/local/go/bin
 
 # -----------------------------------------------------------------------------
+# Node image para os clusters kind (arch-aware).
+# ppc64le (Power9) não tem imagem kindest/node oficial; usamos a build da
+# comunidade Power (quay.io/powercloud/kind-node). amd64/arm64 usam a oficial.
+# Karmada (hack/*.sh) seleciona a node image via a variável CLUSTER_VERSION.
+# -----------------------------------------------------------------------------
+if [[ "$(uname -m)" == "ppc64le" ]]; then
+    export KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-quay.io/powercloud/kind-node:v1.31.14}"
+else
+    export KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.31.2}"
+fi
+export CLUSTER_VERSION="${CLUSTER_VERSION:-$KIND_NODE_IMAGE}"
+echo -e "${COLOR}🖼️  Kind node image: ${KIND_NODE_IMAGE}${RESET}"
+
+# -----------------------------------------------------------------------------
 # Parse execution mode from argument
 # -----------------------------------------------------------------------------
 EXECUTION_MODE="${1:-kwok}"  # Default to kwok if no argument

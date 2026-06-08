@@ -74,7 +74,12 @@ services:
             - mongo
     mongo:
         container_name: mongo
-        image: mongo:latest
+        # Imagem oficial `mongo` não tem build ppc64le; construímos do conda-forge
+        # (MongoDB 6.0). Portável: funciona em amd64 e ppc64le. Ver ./mongo/Dockerfile.
+        build:
+            context: ./mongo
+            dockerfile: Dockerfile
+        image: simulator-mongo:6.0
         restart: unless-stopped
         ports:
             - "27017:27017"
