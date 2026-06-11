@@ -72,6 +72,9 @@ for CONTEXT in member1 member2; do
   --namespace "$NAMESPACE" \
   --wait \
   --timeout 30m \
+  --set prometheusOperator.admissionWebhooks.enabled=false \
+  --set prometheusOperator.admissionWebhooks.patch.enabled=false \
+  --set prometheusOperator.tls.enabled=false \
   --set grafana.admin.existingSecret=grafana-admin-credentials \
   --set grafana.admin.userKey=admin-user \
   --set grafana.admin.passwordKey=admin-password \

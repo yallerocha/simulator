@@ -18,54 +18,19 @@ fi
 kind get kubeconfig --name member1 > /tmp/member1_temp.yaml
 kind get kubeconfig --name member2 > /tmp/member2_temp.yaml
 
-# Merge the configs and update IPs using Python
-python3 <<PYTHON
-import yaml
-import sys
+# Merge the configs using kubectl (avoids PyYAML dependency) and update IPs
+mkdir -p "$HOME/.kube"
+KUBECONFIG="/tmp/member1_temp.yaml:/tmp/member2_temp.yaml" kubectl config view --flatten > "$HOME/.kube/members.config"
 
-# Load member1 config
-with open('/tmp/member1_temp.yaml', 'r') as f:
-    member1_config = yaml.safe_load(f)
+# Update server endpoints to Docker network IPs
+kubectl --kubeconfig="$HOME/.kube/members.config" config set-cluster kind-member1 --server="https://${MEMBER1_IP}:6443"
+kubectl --kubeconfig="$HOME/.kube/members.config" config set-cluster kind-member2 --server="https://${MEMBER2_IP}:6443"
 
-# Load member2 config  
-with open('/tmp/member2_temp.yaml', 'r') as f:
-    member2_config = yaml.safe_load(f)
+# Rename contexts to simpler names (ignore if already renamed)
+kubectl --kubeconfig="$HOME/.kube/members.config" config rename-context kind-member1 member1 2>/dev/null || true
+kubectl --kubeconfig="$HOME/.kube/members.config" config rename-context kind-member2 member2 2>/dev/null || true
 
-# Start with member1 config as base
-merged_config = member1_config.copy()
-
-# Merge clusters from member2
-for cluster in member2_config.get('clusters', []):
-    merged_config['clusters'].append(cluster)
-
-# Merge contexts from member2
-for context in member2_config.get('contexts', []):
-    merged_config['contexts'].append(context)
-
-# Merge users from member2
-for user in member2_config.get('users', []):
-    merged_config['users'].append(user)
-
-# Update IPs
-for cluster in merged_config.get('clusters', []):
-    if cluster['name'] == 'kind-member1':
-        cluster['cluster']['server'] = f"https://${MEMBER1_IP}:6443"
-    elif cluster['name'] == 'kind-member2':
-        cluster['cluster']['server'] = f"https://${MEMBER2_IP}:6443"
-
-# Rename contexts to simpler names
-for context in merged_config.get('contexts', []):
-    if context['name'] == 'kind-member1':
-        context['name'] = 'member1'
-    elif context['name'] == 'kind-member2':
-        context['name'] = 'member2'
-
-# Write the merged and updated config
-with open('$HOME/.kube/members.config', 'w') as f:
-    yaml.dump(merged_config, f, default_flow_style=False, sort_keys=False)
-
-print("✅ Created members.config with updated endpoints")
-PYTHON
+echo "✅ Created members.config with updated endpoints"
 
 echo "✅ members.config created/updated:"
 echo "   member1: https://${MEMBER1_IP}:6443"

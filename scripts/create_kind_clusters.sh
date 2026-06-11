@@ -96,7 +96,7 @@ if [ "$MEMBER1_NEEDS_CREATE" = true ]; then
     echo -e "${BLUE}[1/2] Creating member1 cluster (private) with ${MEMBER1_WORKERS} workers...${NC}"
 
     # Check if Karmada config exists, if so, use it (it already has workers now)
-    KARMADA_CONFIG="$SCRIPT_DIR/../karmada/artifacts/kindClusterConfig/member1.yaml"
+    KARMADA_CONFIG="$SCRIPT_DIR/karmada/artifacts/kindClusterConfig/member1.yaml"
     if [ -f "$KARMADA_CONFIG" ]; then
         echo -e "${BLUE}  Using Karmada config (already includes workers)...${NC}"
         kind create cluster --name member1 --image "$KIND_NODE_IMAGE" --config "$KARMADA_CONFIG"
@@ -105,6 +105,26 @@ if [ "$MEMBER1_NEEDS_CREATE" = true ]; then
         cat > /tmp/member1-kind-config.yaml <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        cgroups-per-qos: "false"
+        enforce-node-allocatable: ""
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        cgroups-per-qos: "false"
+        enforce-node-allocatable: ""
+  - |
+    kind: KubeletConfiguration
+    cgroupDriver: cgroupfs
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+      SystemdCgroup = false
 nodes:
   - role: control-plane
     kubeadmConfigPatches:
@@ -151,7 +171,7 @@ if [ "$MEMBER2_NEEDS_CREATE" = true ]; then
     echo -e "${BLUE}[2/2] Creating member2 cluster (public) with ${MEMBER2_WORKERS} workers...${NC}"
 
     # Check if Karmada config exists, if so, use it (it already has workers now)
-    KARMADA_CONFIG="$SCRIPT_DIR/../karmada/artifacts/kindClusterConfig/member2.yaml"
+    KARMADA_CONFIG="$SCRIPT_DIR/karmada/artifacts/kindClusterConfig/member2.yaml"
     if [ -f "$KARMADA_CONFIG" ]; then
         echo -e "${BLUE}  Using Karmada config (already includes workers)...${NC}"
         kind create cluster --name member2 --image "$KIND_NODE_IMAGE" --config "$KARMADA_CONFIG"
@@ -160,6 +180,26 @@ if [ "$MEMBER2_NEEDS_CREATE" = true ]; then
         cat > /tmp/member2-kind-config.yaml <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        cgroups-per-qos: "false"
+        enforce-node-allocatable: ""
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        cgroups-per-qos: "false"
+        enforce-node-allocatable: ""
+  - |
+    kind: KubeletConfiguration
+    cgroupDriver: cgroupfs
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+      SystemdCgroup = false
 nodes:
   - role: control-plane
     kubeadmConfigPatches:

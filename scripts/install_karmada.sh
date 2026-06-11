@@ -80,6 +80,78 @@ else
   fi
   echo -e "${COLOR}✅ Config files cleaned (control-plane only for KWOK mode)${RESET}"
 fi
+
+# -----------------------------------------------------------------------------
+# ppc64le/cgroup-v1: em container aninhado o kubelet não consegue criar a
+# hierarquia de QOS cgroups (kubelet.slice), entrando em crashloop e fazendo a
+# criação do cluster falhar. Desativa QOS cgroups e alinha kubelet+containerd em
+# cgroupfs. Patches idempotentes, aplicados ao clone fresco do Karmada.
+# Ref: kubernetes-sigs/kind#3975, kubernetes#43704.
+# -----------------------------------------------------------------------------
+inject_cgroup_patches() {
+  local cfg="$1"
+  [ -f "$cfg" ] || return 0
+  grep -q "cgroups-per-qos" "$cfg" && return 0
+  cat >> "$cfg" <<'EOF'
+kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        cgroups-per-qos: "false"
+        enforce-node-allocatable: ""
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        cgroups-per-qos: "false"
+        enforce-node-allocatable: ""
+  - |
+    kind: KubeletConfiguration
+    cgroupDriver: cgroupfs
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+      SystemdCgroup = false
+EOF
+}
+
+if [[ "$(uname -m)" == "ppc64le" ]]; then
+  echo -e "${COLOR}🔧 ppc64le: injecting cgroupfs patches into kind configs...${RESET}"
+  for cfg in artifacts/kindClusterConfig/karmada-host.yaml \
+             artifacts/kindClusterConfig/member1.yaml \
+             artifacts/kindClusterConfig/member2.yaml \
+             artifacts/kindClusterConfig/member3.yaml; do
+    inject_cgroup_patches "$cfg"
+  done
+
+  # Quando HOST_IPADDRESS está vazio, o upstream cria o karmada-host SEM config
+  # (perdendo os patches acima). Força o uso do karmada-host.yaml também nesse caso.
+  SDB="hack/setup-dev-base.sh"
+  if [ -f "$SDB" ]; then
+    python3 - "$SDB" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = '''else
+  util::create_cluster "${HOST_CLUSTER_NAME}" "${MAIN_KUBECONFIG}" "${CLUSTER_VERSION}" "${KIND_LOG_FILE}"
+'''
+new = '''else
+  # ppc64le: forca uso do karmada-host.yaml (com patches de cgroup) mesmo sem HOST_IPADDRESS
+  cp -rf "${REPO_ROOT}"/artifacts/kindClusterConfig/karmada-host.yaml "${TEMP_PATH}"/karmada-host.yaml
+  sed -i -e "/{{host_ipaddress}}/d" -e "/networking:/d" "${TEMP_PATH}"/karmada-host.yaml
+  util::create_cluster "${HOST_CLUSTER_NAME}" "${MAIN_KUBECONFIG}" "${CLUSTER_VERSION}" "${KIND_LOG_FILE}" "${TEMP_PATH}"/karmada-host.yaml
+'''
+if 'patches de cgroup' not in s and old in s:
+    s = s.replace(old, new)
+    open(p, 'w').write(s)
+    print("  setup-dev-base.sh patched (ppc64le host cgroup)")
+else:
+    print("  setup-dev-base.sh already patched or upstream changed")
+PY
+  fi
+fi
+
 # Aumenta limites de inotify (kind/karmada usam muitos file watches).
 # Em container pode não haver 'sysctl' ou permissão; tenta via /proc e nunca falha.
 if command -v sysctl &> /dev/null; then
