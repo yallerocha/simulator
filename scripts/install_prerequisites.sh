@@ -105,6 +105,28 @@ function install_docker() {
   echo -e "${COLOR}ℹ️ Docker installed.${RESET}"
 }
 
+# Garante que o daemon do Docker esteja rodando. Em containers (DinD) o init
+# nem sempre sobe o dockerd; tenta systemd, depois service, depois dockerd direto.
+function ensure_docker_running() {
+  if docker info &> /dev/null; then
+    echo -e "${COLOR}✅ Docker daemon is running.${RESET}"
+    return 0
+  fi
+  echo -e "${COLOR}🐳 Docker daemon not running — attempting to start...${RESET}"
+  sudo systemctl start docker 2>/dev/null \
+    || sudo service docker start 2>/dev/null \
+    || sudo sh -c 'nohup dockerd > /var/log/dockerd.log 2>&1 &'
+  for _ in $(seq 1 20); do
+    if docker info &> /dev/null; then
+      echo -e "${COLOR}✅ Docker daemon is running.${RESET}"
+      return 0
+    fi
+    sleep 2
+  done
+  echo -e "${COLOR}⚠️ Docker daemon ainda não respondeu. Verifique /var/log/dockerd.log${RESET}"
+  return 1
+}
+
 function install_compose() {
   # Prefer the Docker Compose v2 plugin ("docker compose"), which has official
   # builds for amd64, arm64 AND ppc64le (Power9).
@@ -285,6 +307,7 @@ function install_yq() {
 # -----------------------------------------------------------------------------
 install_curl
 install_docker
+ensure_docker_running
 install_compose
 install_git
 install_go
