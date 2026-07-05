@@ -1,6 +1,24 @@
 version: '3.8'
 
 services:
+    # Ollama - Local LLM inference server (ppc64le via conda ufcg-ibm)
+    ollama:
+        container_name: ollama
+        build:
+            context: ./docker/ollama
+            dockerfile: Dockerfile
+        image: simulator-ollama:ppc64le
+        restart: unless-stopped
+        ports:
+            - "11434:11434"
+        environment:
+            - OLLAMA_MODELS_CONFIG=/app/ollama_models.yaml
+        volumes:
+            - ollama_data:/root/.ollama
+            - type: bind
+              source: ./simulator/data/config.yaml
+              target: /app/ollama_models.yaml
+
     # Broker (same as before)
     broker:
         container_name: broker
@@ -27,13 +45,17 @@ services:
             dockerfile: Dockerfile
         network_mode: host
 
-    # AI-Engine (same as before)
+    # AI-Engine (now uses Ollama for local inference)
     ai-engine:
         container_name: ai-engine
         build:
             context: ./ai-engine
             dockerfile: Dockerfile.api
+        environment:
+            - OLLAMA_HOST=http://127.0.0.1:11434
         network_mode: "host"
+        depends_on:
+            - ollama
 
     # Actuator (same as before)
     actuator:
@@ -63,3 +85,4 @@ networks:
 
 volumes:
     mongo_data:
+    ollama_data:

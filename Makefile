@@ -7,7 +7,7 @@ ACTUATOR_MODE ?= auto
 # Falls back to "docker compose" so the error message is clear if neither is installed.
 COMPOSE := $(shell if docker compose version >/dev/null 2>&1; then echo "docker compose"; elif command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"; else echo "docker compose"; fi)
 
-.PHONY: all setup start setup-and-start setup-and-start-human setup-kubernetes-infra stop-all-containers restart-all-containers clean-karmada-deployments clean-all help start-auto-mode start-human-loop-mode run-auto-mode run-all-containers run-all-containers-human
+.PHONY: all setup start setup-and-start setup-and-start-human setup-kubernetes-infra stop-all-containers restart-all-containers clean-karmada-deployments clean-all help start-auto-mode start-human-loop-mode run-auto-mode run-all-containers run-all-containers-human ollama-start ollama-stop ollama-restart ollama-logs ollama-list ollama-build
 
 # Default target: shows help
 all: help
@@ -69,6 +69,7 @@ setup:
 
 # Starts only the Go simulator (assumes infrastructure is already set up)
 start-simulator:
+	@python3 scripts/wait_for_ollama.py
 	@(cd simulator/cmd && go run main.go)
 
 # Starts simulator in KWOK mode (assumes setup already done)
@@ -185,15 +186,51 @@ stop-all-containers:
 	else \
 		echo "Stopping and removing all containers and volumes defined in compose.yaml..."; \
 		sudo $(COMPOSE) -f compose.yaml down -v || true; \
-		echo "Removing images..."; \
-		mongo_image_ids=$$(sudo docker images --format '{{.ID}} {{.Repository}}' | grep mongo | awk '{print $$1}'); \
+		echo "Removing images (preserving mongo and ollama)..."; \
+		preserve_ids=$$(sudo docker images --format '{{.ID}} {{.Repository}}' | grep -E 'mongo|ollama' | awk '{print $$1}'); \
 		for img in $$(sudo docker images -q); do \
-			if ! echo "$$mongo_image_ids" | grep -q "$$img"; then \
+			if ! echo "$$preserve_ids" | grep -q "$$img"; then \
 				sudo docker rmi -f $$img 2>/dev/null || true; \
 			fi; \
 		done; \
 		echo "Cleanup process completed."; \
 	fi
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Ollama Management
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Build the Ollama container image (conda install ufcg-ibm::ollama-ppc64le)
+ollama-build:
+	@echo -e "\\e[35m🔨 Building Ollama container (ufcg-ibm::ollama-ppc64le)...\\e[0m"
+	@$(COMPOSE) -f compose.yaml build ollama
+	@echo -e "\\e[32m✓ Ollama image built.\\e[0m"
+
+# Start the Ollama container (pulls models and applies Modelfiles on first boot)
+ollama-start:
+	@echo -e "\\e[35m🚀 Starting Ollama server...\\e[0m"
+	@$(COMPOSE) -f compose.yaml up -d ollama
+	@echo -e "\\e[32m✓ Ollama started. Use 'make ollama-logs' to watch model provisioning.\\e[0m"
+
+# Stop the Ollama container
+ollama-stop:
+	@echo -e "\\e[33m⏹  Stopping Ollama server...\\e[0m"
+	@$(COMPOSE) -f compose.yaml stop ollama
+	@echo -e "\\e[32m✓ Ollama stopped.\\e[0m"
+
+# Restart Ollama (re-applies Modelfiles from config)
+ollama-restart:
+	@echo -e "\\e[36m🔄 Restarting Ollama (re-applying Modelfiles from config)...\\e[0m"
+	@$(COMPOSE) -f compose.yaml restart ollama
+	@echo -e "\\e[32m✓ Ollama restarted.\\e[0m"
+
+# Follow Ollama logs
+ollama-logs:
+	@$(COMPOSE) -f compose.yaml logs -f ollama
+
+# List models available in Ollama
+ollama-list:
+	@sudo docker exec ollama ollama list
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Important Notes
@@ -228,10 +265,18 @@ help:
 	@echo "  make start kwok                   : 🎭 Start simulator (KWOK)"
 	@echo "  make start real                   : 🌐 Start simulator (Real)"
 	@echo ""
-	@echo "� Container Management:"
+	@echo "📦 Container Management:"
 	@echo "  run-all-containers                : Starts all required containers via docker-compose"
 	@echo "  restart-all-containers            : Stops, removes, and recreates all containers"
 	@echo "  stop-all-containers               : Stops and removes all simulator containers"
+	@echo ""
+	@echo "🤖 Ollama (Local LLM):"
+	@echo "  ollama-build                      : Build Ollama image (ufcg-ibm::ollama-ppc64le)"
+	@echo "  ollama-start                      : Start Ollama server + pull models"
+	@echo "  ollama-stop                       : Stop Ollama server"
+	@echo "  ollama-restart                    : Restart Ollama (re-apply Modelfiles)"
+	@echo "  ollama-logs                       : Follow Ollama container logs"
+	@echo "  ollama-list                       : List models available in Ollama"
 	@echo ""
 	@echo "🗄️  Database:"
 	@echo "  clean-mongo-db                    : Cleans all documents from MongoDB collections"

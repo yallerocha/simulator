@@ -1,4 +1,23 @@
 services:
+    ollama:
+        container_name: ollama
+        # ppc64le: Ollama instalado via conda do canal ufcg-ibm
+        # (conda install ufcg-ibm::ollama-ppc64le)
+        build:
+            context: ./docker/ollama
+            dockerfile: Dockerfile
+        image: simulator-ollama:ppc64le
+        restart: unless-stopped
+        ports:
+            - "11434:11434"
+        environment:
+            - OLLAMA_MODELS_CONFIG=/app/ollama_models.yaml
+        volumes:
+            - ollama_data:/root/.ollama
+            - type: bind
+              source: ./simulator/data/config.yaml
+              target: /app/ollama_models.yaml
+
     broker:
         container_name: broker
         build:
@@ -16,7 +35,7 @@ services:
         depends_on:
             - mongo
         environment:
-            - KWOK_MODE=false
+            - KWOK_MODE=true
 
     monitor:
         container_name: monitor
@@ -26,7 +45,7 @@ services:
         restart: unless-stopped
         environment:
             - SIMULATOR_CONFIG=/app/simulator_config.yaml
-            - KWOK_MODE=false
+            - KWOK_MODE=true
         volumes:
             - type: bind
               source: ./simulator/data/config.yaml
@@ -40,9 +59,11 @@ services:
         restart: unless-stopped
         environment:
             - SIMULATOR_CONFIG=/app/simulator_config.yaml
-            - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-            - GROQ_API_KEY=${GROQ_API_KEY}
-            - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+            - OLLAMA_HOST=http://127.0.0.1:11434
+            # Chaves de API remotas mantidas como fallback (opcionais)
+            - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+            - GROQ_API_KEY=${GROQ_API_KEY:-}
+            - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
         volumes:
             - type: bind
               source: ./simulator/data/config.yaml
@@ -51,6 +72,7 @@ services:
         depends_on:
             - monitor
             - actuator
+            - ollama
     actuator:
         container_name: actuator
         build:
@@ -94,3 +116,4 @@ networks:
 volumes:
     mongo_data:
     config_data:
+    ollama_data:
