@@ -1,17 +1,17 @@
 [submodule "broker"]
 	path = broker
 	url = https://github.com/yallerocha/broker
-	branch = main
+	branch = power9
 [submodule "ai-engine"]
 	path = ai-engine
 	url = https://github.com/yallerocha/ai-engine
-	branch = main
+	branch = power9
 [submodule "monitor"]
 	path = monitor
 	url = https://github.com/yallerocha/monitor
-	branch = main
+	branch = monitor-real-workloads
 [submodule "recommendations-manager"]
 	path = recommendations-manager
 	url = https://github.com/yallerocha/recommendations-manager
-	branch = main
+	branch = actuator-real-workloads
 
