@@ -18,6 +18,12 @@ services:
             - type: bind
               source: ./simulator/data/config.yaml
               target: /app/ollama_models.yaml
+        healthcheck:
+            test: ["CMD", "test", "-f", "/tmp/ollama-ready"]
+            interval: 10s
+            timeout: 5s
+            retries: 120
+            start_period: 30s
 
     # Broker (same as before)
     broker:
@@ -55,7 +61,8 @@ services:
             - OLLAMA_HOST=http://127.0.0.1:11434
         network_mode: "host"
         depends_on:
-            - ollama
+            ollama:
+                condition: service_healthy
 
     # Actuator (same as before)
     actuator:

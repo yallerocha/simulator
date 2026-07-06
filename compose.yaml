@@ -17,6 +17,12 @@ services:
             - type: bind
               source: ./simulator/data/config.yaml
               target: /app/ollama_models.yaml
+        healthcheck:
+            test: ["CMD", "test", "-f", "/tmp/ollama-ready"]
+            interval: 10s
+            timeout: 5s
+            retries: 120
+            start_period: 30s
 
     broker:
         container_name: broker
@@ -35,7 +41,7 @@ services:
         depends_on:
             - mongo
         environment:
-            - KWOK_MODE=true
+            - KWOK_MODE=false
 
     monitor:
         container_name: monitor
@@ -45,7 +51,7 @@ services:
         restart: unless-stopped
         environment:
             - SIMULATOR_CONFIG=/app/simulator_config.yaml
-            - KWOK_MODE=true
+            - KWOK_MODE=false
         volumes:
             - type: bind
               source: ./simulator/data/config.yaml
@@ -70,9 +76,12 @@ services:
               target: /app/simulator_config.yaml
         network_mode: "host"
         depends_on:
-            - monitor
-            - actuator
-            - ollama
+            monitor:
+                condition: service_started
+            actuator:
+                condition: service_started
+            ollama:
+                condition: service_healthy
     actuator:
         container_name: actuator
         build:

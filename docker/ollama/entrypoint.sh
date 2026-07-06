@@ -7,7 +7,9 @@ set -e
 
 CONFIG_FILE="${OLLAMA_MODELS_CONFIG:-/app/ollama_models.yaml}"
 MODELFILE_DIR="/tmp/ollama-modelfiles"
+READY_FILE="/tmp/ollama-ready"
 mkdir -p "$MODELFILE_DIR"
+rm -f "$READY_FILE"  # limpa sinal de prontidão de boot anterior
 
 # ----- 1. Inicia o servidor Ollama em background -----
 echo "[entrypoint] Iniciando Ollama server..."
@@ -28,7 +30,7 @@ done
 if [ -f "$CONFIG_FILE" ]; then
     echo "[entrypoint] Lendo configuração de modelos de: $CONFIG_FILE"
 
-    # Extrai lista de modelos ollama do YAML usando python (disponível no miniforge)
+    # Extrai apenas o modelo selecionado do YAML usando python (disponível no miniforge)
     python3 - "$CONFIG_FILE" <<'PYEOF'
 import sys, yaml, subprocess, os
 
@@ -38,43 +40,48 @@ modelfile_dir = "/tmp/ollama-modelfiles"
 with open(config_path) as f:
     cfg = yaml.safe_load(f)
 
-# Navega para a seção de modelos — suporta ambas as estruturas de config
+# Navega para a seção ai — suporta ambas as estruturas de config
 ai_cfg = cfg.get("ai-engine", cfg).get("ai", cfg.get("ai", {}))
 models = ai_cfg.get("models", {})
+selected = ai_cfg.get("selected_model")
 
-for model_key, model_cfg in models.items():
-    provider = model_cfg.get("provider", "")
-    if provider != "ollama":
-        continue
+if not selected:
+    print("[entrypoint] ⚠️ Nenhum selected_model definido no config. Pulando provisionamento.")
+    sys.exit(0)
 
-    base_model = model_cfg.get("model_name", model_key)
-    ollama_cfg = model_cfg.get("ollama_config", {})
-    num_ctx = ollama_cfg.get("num_ctx")
-    num_thread = ollama_cfg.get("num_thread")
+model_cfg = models.get(selected, {})
+provider = model_cfg.get("provider", "")
 
-    # Puxa o modelo base primeiro
-    print(f"[entrypoint] Puxando modelo base: {base_model}")
-    subprocess.run(["ollama", "pull", base_model], check=True)
+if provider != "ollama":
+    print(f"[entrypoint] ℹ️ Modelo selecionado '{selected}' usa provider '{provider}', não é ollama. Pulando.")
+    sys.exit(0)
 
-    # Se tem parâmetros customizados, cria uma variante via Modelfile
-    if num_ctx or num_thread:
-        # Usa o MESMO nome do modelo base — o ollama create sobrescreve
-        # a entrada local com os novos parâmetros, sem duplicar os pesos.
-        modelfile_path = os.path.join(modelfile_dir, f"{model_key.replace(':', '_')}.Modelfile")
+base_model = model_cfg.get("model_name", selected)
+ollama_cfg = model_cfg.get("ollama_config", {})
+num_ctx = ollama_cfg.get("num_ctx")
+num_thread = ollama_cfg.get("num_thread")
 
-        print(f"[entrypoint] Criando Modelfile para {base_model} (num_ctx={num_ctx}, num_thread={num_thread})")
-        with open(modelfile_path, "w") as mf:
-            mf.write(f"FROM {base_model}\n")
-            if num_ctx:
-                mf.write(f"PARAMETER num_ctx {num_ctx}\n")
-            if num_thread:
-                mf.write(f"PARAMETER num_thread {num_thread}\n")
+# Puxa apenas o modelo selecionado
+print(f"[entrypoint] Puxando modelo selecionado: {base_model}")
+subprocess.run(["ollama", "pull", base_model], check=True)
 
-        print(f"[entrypoint] Aplicando Modelfile em: {base_model}")
-        subprocess.run(["ollama", "create", base_model, "-f", modelfile_path], check=True)
-        print(f"[entrypoint] ✅ Modelo {base_model} configurado (num_ctx={num_ctx}, num_thread={num_thread})")
-    else:
-        print(f"[entrypoint] ✅ Modelo {base_model} pronto (sem parâmetros custom)")
+# Se tem parâmetros customizados, cria uma variante via Modelfile
+if num_ctx or num_thread:
+    modelfile_path = os.path.join(modelfile_dir, f"{selected.replace(':', '_')}.Modelfile")
+
+    print(f"[entrypoint] Criando Modelfile para {base_model} (num_ctx={num_ctx}, num_thread={num_thread})")
+    with open(modelfile_path, "w") as mf:
+        mf.write(f"FROM {base_model}\n")
+        if num_ctx:
+            mf.write(f"PARAMETER num_ctx {num_ctx}\n")
+        if num_thread:
+            mf.write(f"PARAMETER num_thread {num_thread}\n")
+
+    print(f"[entrypoint] Aplicando Modelfile em: {base_model}")
+    subprocess.run(["ollama", "create", base_model, "-f", modelfile_path], check=True)
+    print(f"[entrypoint] ✅ Modelo {base_model} configurado (num_ctx={num_ctx}, num_thread={num_thread})")
+else:
+    print(f"[entrypoint] ✅ Modelo {base_model} pronto (sem parâmetros custom)")
 PYEOF
 
     echo "[entrypoint] Todos os modelos provisionados."
@@ -82,6 +89,10 @@ else
     echo "[entrypoint] Sem config ($CONFIG_FILE), puxando modelo padrão..."
     ollama pull qwen3:8b
 fi
+
+# ----- 3. Sinaliza que o provisionamento terminou -----
+touch "$READY_FILE"
+echo "[entrypoint] ✅ Sinal de prontidão criado ($READY_FILE)"
 
 echo "[entrypoint] Ollama pronto. Aguardando..."
 wait $OLLAMA_PID
