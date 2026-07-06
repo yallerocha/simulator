@@ -22,8 +22,8 @@ ai-engine:
   data:
     input_json: monitor_outputs.json
   ai:
-    mode: multi_agent
-    selected_model: tinyllama
+    mode: single_agent
+    selected_model: qwen3:8b
     scheduler_interval: 300
     timestamp_lookback_seconds: 600
     workloads_shard_size: 200
