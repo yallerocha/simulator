@@ -60,26 +60,33 @@ base_model = model_cfg.get("model_name", selected)
 ollama_cfg = model_cfg.get("ollama_config", {})
 num_ctx = ollama_cfg.get("num_ctx")
 num_thread = ollama_cfg.get("num_thread")
+# num_gpu: nº de camadas na GPU. 0 = CPU puro; valor alto (ex.: 999) = todas as
+# camadas na GPU; ausente = Ollama decide sozinho (usa GPU se disponível).
+# Testar "is not None" porque 0 é válido e significa desligar a GPU.
+num_gpu = ollama_cfg.get("num_gpu")
 
 # Puxa apenas o modelo selecionado
 print(f"[entrypoint] Puxando modelo selecionado: {base_model}")
 subprocess.run(["ollama", "pull", base_model], check=True)
 
 # Se tem parâmetros customizados, cria uma variante via Modelfile
-if num_ctx or num_thread:
+if num_ctx or num_thread or num_gpu is not None:
     modelfile_path = os.path.join(modelfile_dir, f"{selected.replace(':', '_')}.Modelfile")
 
-    print(f"[entrypoint] Criando Modelfile para {base_model} (num_ctx={num_ctx}, num_thread={num_thread})")
+    mode = "CPU (num_gpu=0)" if num_gpu == 0 else (f"GPU (num_gpu={num_gpu})" if num_gpu is not None else "GPU (auto)")
+    print(f"[entrypoint] Criando Modelfile para {base_model} (num_ctx={num_ctx}, num_thread={num_thread}, modo={mode})")
     with open(modelfile_path, "w") as mf:
         mf.write(f"FROM {base_model}\n")
         if num_ctx:
             mf.write(f"PARAMETER num_ctx {num_ctx}\n")
         if num_thread:
             mf.write(f"PARAMETER num_thread {num_thread}\n")
+        if num_gpu is not None:
+            mf.write(f"PARAMETER num_gpu {num_gpu}\n")
 
     print(f"[entrypoint] Aplicando Modelfile em: {base_model}")
     subprocess.run(["ollama", "create", base_model, "-f", modelfile_path], check=True)
-    print(f"[entrypoint] ✅ Modelo {base_model} configurado (num_ctx={num_ctx}, num_thread={num_thread})")
+    print(f"[entrypoint] ✅ Modelo {base_model} configurado (num_ctx={num_ctx}, num_thread={num_thread}, modo={mode})")
 else:
     print(f"[entrypoint] ✅ Modelo {base_model} pronto (sem parâmetros custom)")
 PYEOF

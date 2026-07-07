@@ -60,8 +60,11 @@ ai-engine:
         model_name: qwen3:8b
         provider: ollama
         ollama_config:
-          num_ctx: 8192
+          num_ctx: 32768
           num_thread: 20
+          # num_gpu: nº de camadas na GPU. 0 = CPU puro; 999 = tudo na GPU;
+          # remova a linha para deixar o Ollama decidir automaticamente.
+          num_gpu: 999
         generation_config:
           temperature: 0.1
           max_output_tokens: 6000

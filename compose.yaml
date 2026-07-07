@@ -57,7 +57,7 @@ services:
         depends_on:
             - mongo
         environment:
-            - KWOK_MODE=true
+            - KWOK_MODE=false
 
     monitor:
         container_name: monitor
@@ -67,7 +67,7 @@ services:
         restart: unless-stopped
         environment:
             - SIMULATOR_CONFIG=/app/simulator_config.yaml
-            - KWOK_MODE=true
+            - KWOK_MODE=false
         volumes:
             - type: bind
               source: ./simulator/data/config.yaml

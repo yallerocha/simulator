@@ -7,7 +7,12 @@ ACTUATOR_MODE ?= auto
 # Falls back to "docker compose" so the error message is clear if neither is installed.
 COMPOSE := $(shell if docker compose version >/dev/null 2>&1; then echo "docker compose"; elif command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"; else echo "docker compose"; fi)
 
-.PHONY: all setup start setup-and-start setup-and-start-human setup-kubernetes-infra stop-all-containers restart-all-containers clean-karmada-deployments clean-all help start-auto-mode start-human-loop-mode run-auto-mode run-all-containers run-all-containers-human ollama-start ollama-stop ollama-restart ollama-logs ollama-list ollama-build
+# Fallback compose project name for clean-project. The recipe first asks Compose
+# for the real resolved project name (respects -p / COMPOSE_PROJECT_NAME / .env);
+# this basename value is only used if that lookup returns nothing.
+PROJECT := $(shell basename "$(CURDIR)" | tr '[:upper:]' '[:lower:]')
+
+.PHONY: all setup start setup-and-start setup-and-start-human setup-kubernetes-infra stop-all-containers restart-all-containers clean-karmada-deployments clean-all clean-project help start-auto-mode start-human-loop-mode run-auto-mode run-all-containers run-all-containers-human ollama-start ollama-stop ollama-restart ollama-logs ollama-list ollama-build
 
 # Default target: shows help
 all: help
@@ -168,6 +173,27 @@ clean-karmada-deployments:
 clean-all: clean-karmada-deployments clean-mongo-db
 	@echo -e "\\e[32m✓ Complete cleanup finished (Karmada + MongoDB).\\e[0m"
 
+# Removes ONLY this project's containers, app images and data volumes.
+# KEEPS: Ollama image + downloaded models (ollama_data volume) and Mongo image.
+# Removes: broker/monitor/ai-engine/actuator images + mongo_data/config_data volumes.
+# Does NOT run any global `docker ... prune`, so nothing else on the host is touched.
+clean-project:
+	@echo -e "\\e[33m🧹 Cleaning project containers, app images and data volumes...\\e[0m"
+	@echo "  → Stopping/removing containers + network (volumes preserved for now)..."
+	@sudo $(COMPOSE) -f compose.yaml down --remove-orphans || true
+	@echo "  → Removing app-built images (broker, monitor, ai-engine, actuator)..."
+	@ids=$$(sudo $(COMPOSE) -f compose.yaml images -q broker monitor ai-engine actuator 2>/dev/null | sort -u); \
+	if [ -n "$$ids" ]; then sudo docker image rm -f $$ids || true; else echo "    (nenhuma imagem de app encontrada)"; fi
+	@echo "  → Removing project data volumes (KEEPING ollama_data / models)..."
+	@proj=$$(sudo $(COMPOSE) -f compose.yaml config 2>/dev/null | sed -n 's/^name: //p' | head -1); \
+	[ -z "$$proj" ] && proj="$(PROJECT)"; \
+	echo "    (compose project: $$proj)"; \
+	for v in mongo_data config_data; do \
+		vol=$$(sudo docker volume ls -q -f label=com.docker.compose.project=$$proj -f label=com.docker.compose.volume=$$v); \
+		if [ -n "$$vol" ]; then echo "    removendo volume: $$vol"; sudo docker volume rm $$vol || true; else echo "    (sem volume para $$v)"; fi; \
+	done
+	@echo -e "\\e[32m✓ Projeto limpo. Imagem+modelos do Ollama e imagem do Mongo preservados.\\e[0m"
+
 restart-all-containers: stop-all-containers run-all-containers
 	@echo "All services have been fully restarted."
 
@@ -179,20 +205,13 @@ stop-kubernetes-infra:
 	kind delete cluster --name karmada-host || true
 	@echo "Clusters KIND removidos."
 
-# Stops and removes all simulator containers, volumes, and images
+# Stops and removes all simulator containers
 stop-all-containers:
 	@if ! command -v docker >/dev/null 2>&1; then \
 		echo "docker não encontrado — pulando limpeza de containers (ambiente novo; os pré-requisitos serão instalados no setup)."; \
 	else \
-		echo "Stopping and removing all containers and volumes defined in compose.yaml..."; \
-		sudo $(COMPOSE) -f compose.yaml down -v || true; \
-		echo "Removing images (preserving mongo and ollama)..."; \
-		preserve_ids=$$(sudo docker images --format '{{.ID}} {{.Repository}}' | grep -E 'mongo|ollama' | awk '{print $$1}'); \
-		for img in $$(sudo docker images -q); do \
-			if ! echo "$$preserve_ids" | grep -q "$$img"; then \
-				sudo docker rmi -f $$img 2>/dev/null || true; \
-			fi; \
-		done; \
+		echo "Stopping and removing all containers defined in compose.yaml..."; \
+		sudo $(COMPOSE) -f compose.yaml down || true; \
 		echo "Cleanup process completed."; \
 	fi
 
@@ -284,6 +303,7 @@ help:
 	@echo "🧹 Cleanup:"
 	@echo "  clean-karmada-deployments         : Deletes all deployments and jobs from Karmada"
 	@echo "  clean-all                         : Cleans Karmada deployments + MongoDB"
+	@echo "  clean-project                     : Removes project images + data volumes (keeps Ollama models/image + Mongo image)"
 	@echo ""
 	@echo "☸️  Infrastructure:"
 	@echo "  setup-kubernetes-infra            : Runs scripts/main.sh to set up Kubernetes"
