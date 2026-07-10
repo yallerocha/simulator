@@ -4,7 +4,9 @@
 FROM condaforge/miniforge3:latest
 
 # Instala o servidor MongoDB do conda-forge (tem build ppc64le).
-RUN mamba install -y -c conda-forge mongodb=6.0.12 && mamba clean -afy
+# pymongo acompanha para permitir limpeza das coleções via o Python do miniforge
+# (o pacote mongodb do conda traz só o `mongod`, sem `mongosh`/`mongo`).
+RUN mamba install -y -c conda-forge mongodb=6.0.12 pymongo && mamba clean -afy
 
 # Diretório de dados (compatível com a imagem oficial: volume em /data/db).
 RUN mkdir -p /data/db

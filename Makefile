@@ -73,7 +73,7 @@ setup:
 	fi
 
 # Starts only the Go simulator (assumes infrastructure is already set up)
-start-simulator:
+start-simulator: clean-mongo-db
 	@python3 scripts/wait_for_ollama.py
 	@(cd simulator/cmd && go run main.go)
 
@@ -125,7 +125,9 @@ kwok:
 real:
 	@:
 
-# Cleans all documents from all collections in the mongo container
+# Cleans all documents from all collections in the mongo container.
+# Uses the miniforge Python + pymongo bundled in the mongo image (the conda
+# mongodb package ships only `mongod`, so there is no `mongosh`/`mongo` shell).
 clean-mongo-db:
 	@echo "Cleaning all documents from all collections in mongo container..."
 	@container_id=$$(sudo docker ps -q -f name=mongo); \
@@ -133,9 +135,13 @@ clean-mongo-db:
 		echo "Mongo container is not running. Nothing to clean."; \
 		exit 0; \
 	fi; \
-	js='dbs=db.getMongo().getDBNames().filter(function(x){return ["admin","local","config"].indexOf(x)<0});dbs.forEach(function(dbName){db=db.getSiblingDB(dbName);db.getCollectionNames().forEach(function(coll){db[coll].deleteMany({});});});'; \
-	sudo docker exec $$container_id mongosh --quiet --eval "$$js"; \
-	echo "All documents removed from all user collections via mongosh in container."
+	py='import sys; from pymongo import MongoClient; c=MongoClient("mongodb://localhost:27017"); [ [c[d][coll].delete_many({}) for coll in c[d].list_collection_names()] for d in c.list_database_names() if d not in ("admin","local","config") ]'; \
+	if sudo docker exec $$container_id python -c "$$py"; then \
+		echo "All documents removed from all user collections via pymongo in container."; \
+	else \
+		echo "ERROR: failed to clean MongoDB collections (see output above)."; \
+		exit 1; \
+	fi
 
 # Cleans all deployments and jobs from Karmada namespace default
 clean-karmada-deployments:
