@@ -22,8 +22,11 @@ ai-engine:
   data:
     input_json: monitor_outputs.json
   ai:
+    # mode: single_agent (1 chamada LLM direta)
+    #       multi_agent (tools deterministicas em paralelo + 1 chamada LLM)
+    #       multi_agent_votes (agentes LLM cpu/mem/pending votam + decision + explainer)
     mode: multi_agent
-    selected_model: gemma4:31b
+    selected_model: qwen3:8b
     scheduler_interval: 300
     timestamp_lookback_seconds: 600
     workloads_shard_size: 200
@@ -40,6 +43,15 @@ ai-engine:
       generation_config:
         temperature: 0.1
         max_output_tokens: 18000
+    multi_agent_votes:
+      selected_prompt: multi_agent
+      provider: ollama
+      generation_config:
+        temperature: 0.1
+        max_output_tokens: 18000
+      # weighted_sum: soma ponderada deterministica dos votos (maioria por peso)
+      # llm_judge: um agente LLM decide, recebendo votos e pesos no prompt
+      aggregation: weighted_sum
       agents:
         cpu_checker:
           enabled: true
